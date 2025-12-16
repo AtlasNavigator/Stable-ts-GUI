@@ -27,8 +27,19 @@ def transcription_worker(file_queue, result_queue, model_name, language, output_
                 result_queue.put(("log", f"Processing {index + 1}/{total_files}: {filename}"))
                 
                 try:
+                    # Progress callback for real-time updates
+                    def progress_callback(seek, total_duration):
+                        if total_duration > 0:
+                            file_progress = seek / total_duration
+                            # Calculate overall progress: completed files + current file progress
+                            overall_progress = (index + file_progress) / total_files
+                            result_queue.put(("file_progress", (overall_progress, index + 1, total_files, file_progress * 100)))
+                    
                     # Prepare arguments
-                    transcribe_args = {"audio": file_path}
+                    transcribe_args = {
+                        "audio": file_path,
+                        "progress_callback": progress_callback
+                    }
                     if language and language != "Auto":
                         transcribe_args["language"] = language
                     
@@ -65,9 +76,10 @@ def transcription_worker(file_queue, result_queue, model_name, language, output_
 
 
 class TranscriptionManager:
-    def __init__(self, update_callback, finish_callback):
+    def __init__(self, update_callback, finish_callback, file_progress_callback=None):
         self.update_callback = update_callback
         self.finish_callback = finish_callback
+        self.file_progress_callback = file_progress_callback
         self.is_running = False
         self.process = None
         self.file_queue = None
@@ -111,6 +123,10 @@ class TranscriptionManager:
                     
                     if msg_type == "log":
                         self.update_callback(msg_data)
+                    elif msg_type == "file_progress":
+                        # Real-time progress during file transcription
+                        if self.file_progress_callback:
+                            self.file_progress_callback(msg_data)
                     elif msg_type == "progress":
                         completed, total = msg_data
                         self.finish_callback(completed, total)

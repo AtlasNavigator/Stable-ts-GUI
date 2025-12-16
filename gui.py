@@ -194,12 +194,24 @@ class App(customtkinter.CTk, TkinterDnD.DnDWrapper):
         # Initialize manager if not already done
         if not hasattr(self, 'manager'):
             from transcriber import TranscriptionManager
-            self.manager = TranscriptionManager(self.update_from_thread, self.progress_update)
+            self.manager = TranscriptionManager(self.update_from_thread, self.progress_update, self.file_progress_update)
 
         self.manager.start(self.file_list, model, language, output_format, app=self)
 
     def update_from_thread(self, message):
         self.after(0, self.log_to_terminal, message)
+
+    def file_progress_update(self, progress_data):
+        """Handle real-time progress updates during file transcription."""
+        self.after(0, self._update_file_progress_ui, progress_data)
+
+    def _update_file_progress_ui(self, progress_data):
+        """Update UI with real-time file transcription progress."""
+        overall_progress, current_file, total_files, file_percent = progress_data
+        self.progress_bar.set(overall_progress)
+        pending = total_files - current_file + 1  # Current file is still in progress
+        completed = current_file - 1
+        self.status_label.configure(text=f"File {current_file}/{total_files} ({file_percent:.0f}%) | Completed: {completed}")
 
     def progress_update(self, completed, total):
         self.after(0, self._update_progress_ui, completed, total)
@@ -211,9 +223,8 @@ class App(customtkinter.CTk, TkinterDnD.DnDWrapper):
         if completed == total:
             self.start_button.configure(state="normal", text="Start Transcription")
             self.stop_button.configure(state="disabled")
-            # self.file_list = [] # Keep queue for now
-            # Actually, clearing the queue visual might be confusing if they want to see what was done.
-            # For now, let's just reset the button.
+            # Reset progress bar after a short delay to show completion
+            self.after(2000, lambda: self.progress_bar.set(0) if not self.manager.is_running else None)
 
     def log_to_terminal(self, message):
         self.terminal_textbox.configure(state="normal")
